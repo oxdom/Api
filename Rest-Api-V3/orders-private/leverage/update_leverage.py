@@ -1,54 +1,57 @@
-const axios = require('axios');
-const crypto = require('crypto');
-const dotenv = require('dotenv');
+import os
+import requests
+import hmac
+import hashlib
+import base64
+import time
+from dotenv import load_dotenv
 
-dotenv.config();
+load_dotenv()
 
-function adjustLeverage(marketCode, leverage) {
-    const apiKey = process.env.API_KEY;
-    const secretKey = Buffer.from(process.env.API_SECRET, 'utf-8');
-    const ts = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const nonce = Date.now().toString();
-    const method = "/v3/leverage";
-    const apiUrl = "api.ox.fun";
 
-    const payload = {
-        marketCode: marketCode,
-        leverage: leverage
-    };
+def adjust_leverage(market_code, leverage):
+    api_key = os.getenv('API_KEY')
+    secret_key = os.getenv('API_SECRET').encode('utf-8')
+    ts = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())
+    nonce = str(int(time.time() * 1000))
+    method = "/v3/leverage"
+    api_url = "api.ox.fun"
 
-    const payloadStr = JSON.stringify(payload);
-    const msgString = `${ts}\n${nonce}\nPOST\n${apiUrl}\n${method}\n${payloadStr}`;
+    payload = {
+        "marketCode": market_code,
+        "leverage": leverage
+    }
 
-    const sign = crypto.createHmac('sha256', secretKey)
-        .update(msgString)
-        .digest('base64');
+    # Convert payload to JSON string
+    payload_str = str(payload).replace("'", '"')
+    msg_string = f"{ts}\n{nonce}\nPOST\n{api_url}\n{method}\n{payload_str}"
 
-    const headers = {
+    # Generate HMAC SHA256 signature
+    sign = base64.b64encode(hmac.new(secret_key, msg_string.encode('utf-8'), hashlib.sha256).digest()).decode('utf-8')
+
+    headers = {
         'Content-Type': 'application/json',
-        'AccessKey': apiKey,
+        'AccessKey': api_key,
         'Timestamp': ts,
         'Signature': sign,
         'Nonce': nonce
-    };
+    }
 
-    const url = `https://${apiUrl}${method}`;
+    url = f"https://{api_url}{method}"
 
-    axios.post(url, payload, { headers })
-        .then(response => {
-            const data = response.data;
-            if (data.success) {
-                console.log('Leverage Adjustment Successful:', data.data);
-            } else {
-                console.log('Failed to adjust leverage:', data);
-            }
-        })
-        .catch(error => {
-            console.error('Error adjusting leverage:', error.message);
-        });
-}
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        if data.get('success'):
+            print('Leverage Adjustment Successful:', data['data'])
+        else:
+            print('Failed to adjust leverage:', data)
+    except requests.exceptions.RequestException as error:
+        print('Error adjusting leverage:', error)
 
-// Example usage
-const marketCode = 'BTC-USD-SWAP-LIN';
-const leverage = 1; // Example leverage value
-adjustLeverage(marketCode, leverage);
+
+# Example usage
+market_code = 'BTC-USD-SWAP-LIN'
+leverage = 1  # Example leverage value
+adjust_leverage(market_code, leverage)
